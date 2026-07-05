@@ -4,16 +4,25 @@ using ConfigurationManager.Core.Dtos;
 
 namespace ConfigurationManager.Web.Services;
 
-/// <summary>Thin typed client for the ConfigurationManager.Api Functions app. All business logic lives server-side; this class only shapes HTTP calls.</summary>
+/// <summary>
+/// Thin typed client for the ConfigurationManager.Api Functions app. All business logic lives
+/// server-side; this class only shapes HTTP calls. The current user's API key is attached per
+/// request from <see cref="CurrentSession"/> - injected directly here (typed clients are
+/// resolved from the Blazor circuit's DI scope) rather than via a DelegatingHandler, because
+/// IHttpClientFactory builds handler pipelines in its own DI scope and would receive a
+/// different, empty CurrentSession instance.
+/// </summary>
 public class ConfigurationApiClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly HttpClient _http;
+    private readonly CurrentSession _session;
 
-    public ConfigurationApiClient(HttpClient http)
+    public ConfigurationApiClient(HttpClient http, CurrentSession session)
     {
         _http = http;
+        _session = session;
     }
 
     public Task<ApiResult<IReadOnlyList<TenantDto>>> GetTenantsAsync(CancellationToken ct = default) =>
@@ -58,7 +67,8 @@ public class ConfigurationApiClient
     {
         try
         {
-            using var response = await _http.GetAsync(url, ct);
+            using var request = CreateRequest(HttpMethod.Get, url);
+            using var response = await _http.SendAsync(request, ct);
             return await ReadResultAsync<T>(response, ct);
         }
         catch (HttpRequestException ex)
@@ -71,13 +81,26 @@ public class ConfigurationApiClient
     {
         try
         {
-            using var response = await _http.PostAsJsonAsync(url, body, JsonOptions, ct);
+            using var request = CreateRequest(HttpMethod.Post, url);
+            request.Content = JsonContent.Create(body, options: JsonOptions);
+            using var response = await _http.SendAsync(request, ct);
             return await ReadResultAsync<T>(response, ct);
         }
         catch (HttpRequestException ex)
         {
             return ApiResult<T>.Fail($"Could not reach the configuration API: {ex.Message}");
         }
+    }
+
+    private HttpRequestMessage CreateRequest(HttpMethod method, string url)
+    {
+        var request = new HttpRequestMessage(method, url);
+        if (!string.IsNullOrEmpty(_session.ApiKey))
+        {
+            request.Headers.Add("X-Api-Key", _session.ApiKey);
+        }
+
+        return request;
     }
 
     private static async Task<ApiResult<T>> ReadResultAsync<T>(HttpResponseMessage response, CancellationToken ct)

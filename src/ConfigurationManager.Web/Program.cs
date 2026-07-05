@@ -9,13 +9,12 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddScoped<CurrentSession>();
 builder.Services.AddSingleton<DemoApiKeyDirectory>();
-builder.Services.AddTransient<ApiKeyHandler>();
 
 var apiBaseUrl = builder.Configuration["Api:BaseUrl"] ?? "http://localhost:7071/api/";
 builder.Services.AddHttpClient<ConfigurationApiClient>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl.EndsWith('/') ? apiBaseUrl : apiBaseUrl + "/");
-}).AddHttpMessageHandler<ApiKeyHandler>();
+});
 
 var app = builder.Build();
 
