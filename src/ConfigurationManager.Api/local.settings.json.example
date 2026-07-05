@@ -1,0 +1,31 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+
+    "Database:Provider": "Sqlite",
+    "ConnectionStrings:ConfigurationDb": "Data Source=configurationmanager.db",
+
+    "Secrets:EncryptionKeyBase64": "REPLACE_ME_RUN_openssl_rand_-base64_32",
+
+    "ApiKeys:0:Key": "dev-admin-key",
+    "ApiKeys:0:Role": "Admin",
+    "ApiKeys:0:Name": "Local Admin",
+
+    "ApiKeys:1:Key": "dev-itsupport-key",
+    "ApiKeys:1:Role": "ITSupport",
+    "ApiKeys:1:Name": "Local IT Support",
+
+    "ApiKeys:2:Key": "dev-owner-key",
+    "ApiKeys:2:Role": "Owner",
+    "ApiKeys:2:Name": "Local Owner",
+
+    "ApiKeys:3:Key": "dev-runtime-key",
+    "ApiKeys:3:Role": "RuntimeReader",
+    "ApiKeys:3:Name": "Local Runtime Service"
+  },
+  "Host": {
+    "CORS": "*"
+  }
+}

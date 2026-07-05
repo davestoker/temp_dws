@@ -1,0 +1,215 @@
+@page "/"
+@using ConfigurationManager.Core.Dtos
+@using ConfigurationManager.Core.Enums
+@using ConfigurationManager.Web.Services
+@inject ConfigurationApiClient Api
+@inject CurrentSession Session
+
+<PageTitle>Configuration Explorer</PageTitle>
+
+<h1>Configuration Explorer</h1>
+
+@if (!Session.IsSignedIn)
+{
+    <div class="alert alert-warning">Please <a href="login">sign in</a> first.</div>
+    return;
+}
+
+<div class="row g-3 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label">Tenant</label>
+        <select class="form-select" @bind="_tenantCode">
+            <option value="">-- select --</option>
+            @foreach (var t in _tenants)
+            {
+                <option value="@t.TenantCode">@t.Name (@t.TenantCode)@(t.IsEnabled ? "" : " [disabled]")</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">Integration</label>
+        <select class="form-select" @bind="_integrationName">
+            <option value="">-- select --</option>
+            @foreach (var i in _integrations)
+            {
+                <option value="@i.IntegrationName">@i.IntegrationName (@i.IntegrationTypeName)@(i.IsEnabled ? "" : " [disabled]")</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">Environment</label>
+        <select class="form-select" @bind="_environmentName">
+            <option value="">-- select --</option>
+            @foreach (var e in _environments)
+            {
+                <option value="@e.Name">@e.Name@(e.IsEnabled ? "" : " [disabled]")</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" disabled="@(!CanResolve)" @onclick="ResolveAsync">Resolve</button>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">Visibility group</label>
+        <select class="form-select" @bind="_visibilityFilter">
+            <option value="">All</option>
+            <option value="Admin">Admin</option>
+            <option value="ITSupport">ITSupport</option>
+            <option value="Owner">Owner</option>
+        </select>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_result is not null)
+{
+    if (_result.HasMissingRequiredValues)
+    {
+        <div class="alert alert-danger">One or more required configuration values are missing or disabled - see highlighted rows below.</div>
+    }
+
+    var grouped = _result.Items
+        .Where(i => string.IsNullOrEmpty(_visibilityFilter) || i.VisibilityGroup.ToString() == _visibilityFilter)
+        .GroupBy(i => (i.Section ?? "General", i.Subsection ?? ""))
+        .OrderBy(g => g.Key.Item1).ThenBy(g => g.Key.Item2);
+
+    foreach (var group in grouped)
+    {
+        <h4 class="mt-4">@group.Key.Item1 @(string.IsNullOrEmpty(group.Key.Item2) ? "" : $"/ {group.Key.Item2}")</h4>
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr>
+                    <th>Key</th>
+                    <th>Value</th>
+                    <th>Source</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in group)
+                {
+                    <tr class="@RowClass(item)">
+                        <td>
+                            <strong>@item.DisplayName</strong>
+                            <div class="text-muted small">@item.KeyName</div>
+                            @if (!string.IsNullOrEmpty(item.Description))
+                            {
+                                <div class="small">@item.Description</div>
+                            }
+                        </td>
+                        <td>
+                            @if (item.IsSensitive)
+                            {
+                                <span class="badge bg-secondary">@(item.Value ?? "(not set)")</span>
+                            }
+                            else
+                            {
+                                <span>@(item.Value ?? "(not set)")</span>
+                            }
+                        </td>
+                        <td><span class="badge bg-info text-dark">@item.SourceLayer</span></td>
+                        <td>
+                            @if (item.IsMissing)
+                            {
+                                <span class="badge bg-danger">Missing (required)</span>
+                            }
+                            else if (!item.IsEnabled)
+                            {
+                                <span class="badge bg-secondary">Disabled</span>
+                            }
+                            else if (item.SourceLayer is ConfigurationSourceLayer.Tenant or ConfigurationSourceLayer.Environment or ConfigurationSourceLayer.TenantEnvironment)
+                            {
+                                <span class="badge bg-warning text-dark">Overridden</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success">OK</span>
+                            }
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenEditor(item)">Edit</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@if (_editing is not null)
+{
+    <EditValueDialog Item="_editing" TenantCode="@_tenantCode" EnvironmentName="@_environmentName"
+                      OnClose="CloseEditor" OnSaved="OnValueSaved" />
+}
+
+@code {
+    private IReadOnlyList<TenantDto> _tenants = Array.Empty<TenantDto>();
+    private IReadOnlyList<IntegrationDto> _integrations = Array.Empty<IntegrationDto>();
+    private IReadOnlyList<EnvironmentDto> _environments = Array.Empty<EnvironmentDto>();
+
+    private string _tenantCode = "";
+    private string _integrationName = "";
+    private string _environmentName = "";
+    private string _visibilityFilter = "";
+
+    private ConfigurationResolveResult? _result;
+    private ResolvedConfigurationItem? _editing;
+    private string? _error;
+
+    private bool CanResolve => !string.IsNullOrEmpty(_tenantCode) && !string.IsNullOrEmpty(_integrationName) && !string.IsNullOrEmpty(_environmentName);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsSignedIn)
+        {
+            return;
+        }
+
+        var tenants = await Api.GetTenantsAsync();
+        var integrations = await Api.GetIntegrationsAsync();
+        var environments = await Api.GetEnvironmentsAsync();
+
+        if (tenants.Success) _tenants = tenants.Data!;
+        if (integrations.Success) _integrations = integrations.Data!;
+        if (environments.Success) _environments = environments.Data!;
+
+        _error = tenants.Error ?? integrations.Error ?? environments.Error;
+    }
+
+    private async Task ResolveAsync()
+    {
+        _error = null;
+        var response = await Api.ResolveAsync(_tenantCode, _integrationName, _environmentName);
+        if (response.Success)
+        {
+            _result = response.Data;
+        }
+        else
+        {
+            _error = response.Error;
+            _result = null;
+        }
+    }
+
+    private static string RowClass(ResolvedConfigurationItem item)
+    {
+        if (item.IsMissing) return "table-danger";
+        if (!item.IsEnabled) return "table-secondary";
+        if (item.SourceLayer is ConfigurationSourceLayer.Tenant or ConfigurationSourceLayer.Environment or ConfigurationSourceLayer.TenantEnvironment) return "table-warning";
+        return "";
+    }
+
+    private void OpenEditor(ResolvedConfigurationItem item) => _editing = item;
+    private void CloseEditor() => _editing = null;
+
+    private async Task OnValueSaved()
+    {
+        _editing = null;
+        await ResolveAsync();
+    }
+}

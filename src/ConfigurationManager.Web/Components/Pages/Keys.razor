@@ -1,0 +1,160 @@
+@page "/keys"
+@using ConfigurationManager.Core.Dtos
+@using ConfigurationManager.Core.Enums
+@using ConfigurationManager.Web.Services
+@inject ConfigurationApiClient Api
+@inject CurrentSession Session
+
+<PageTitle>Configuration Keys</PageTitle>
+
+<h1>Configuration Keys</h1>
+
+@if (!Session.IsSignedIn)
+{
+    <div class="alert alert-warning">Please <a href="login">sign in</a> first.</div>
+    return;
+}
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+<table class="table table-sm">
+    <thead>
+        <tr>
+            <th>Key Name</th>
+            <th>Type</th>
+            <th>Visibility</th>
+            <th>Required</th>
+            <th>Sensitive</th>
+            <th>Enabled</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var key in _keys)
+        {
+            <tr class="@(key.IsEnabled ? "" : "table-secondary")">
+                <td>
+                    <strong>@key.DisplayName</strong>
+                    <div class="text-muted small">@key.KeyName</div>
+                </td>
+                <td>@key.DataType</td>
+                <td>@key.VisibilityGroup</td>
+                <td>@(key.IsRequired ? "Yes" : "No")</td>
+                <td>@(key.IsSensitive ? "Yes" : "No")</td>
+                <td>@(key.IsEnabled ? "Yes" : "No")</td>
+                <td>
+                    @if (Session.Role == AppRole.Admin)
+                    {
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => ToggleEnabledAsync(key)">
+                            @(key.IsEnabled ? "Disable" : "Enable")
+                        </button>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@if (Session.Role == AppRole.Admin)
+{
+    <h4 class="mt-4">Create Key</h4>
+    <div class="row g-2" style="max-width: 700px;">
+        <div class="col-6"><input class="form-control" placeholder="KeyName e.g. Shopify.ApiKey" @bind="_newKeyName" /></div>
+        <div class="col-6"><input class="form-control" placeholder="Display name" @bind="_newDisplayName" /></div>
+        <div class="col-4">
+            <select class="form-select" @bind="_newDataType">
+                @foreach (var dt in Enum.GetValues<ConfigurationDataType>())
+                {
+                    <option value="@dt">@dt</option>
+                }
+            </select>
+        </div>
+        <div class="col-4">
+            <select class="form-select" @bind="_newVisibilityGroup">
+                @foreach (var vg in Enum.GetValues<VisibilityGroup>())
+                {
+                    <option value="@vg">@vg</option>
+                }
+            </select>
+        </div>
+        <div class="col-4 form-check mt-2">
+            <input class="form-check-input" type="checkbox" id="required" @bind="_newIsRequired" />
+            <label class="form-check-label" for="required">Required</label>
+        </div>
+        <div class="col-12"><textarea class="form-control" placeholder="Description" @bind="_newDescription"></textarea></div>
+        <div class="col-12"><button class="btn btn-primary" @onclick="CreateKeyAsync">Create</button></div>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<ConfigurationKeyDto> _keys = Array.Empty<ConfigurationKeyDto>();
+    private string? _error;
+
+    private string _newKeyName = "";
+    private string _newDisplayName = "";
+    private string _newDescription = "";
+    private ConfigurationDataType _newDataType = ConfigurationDataType.String;
+    private VisibilityGroup _newVisibilityGroup = VisibilityGroup.Admin;
+    private bool _newIsRequired;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsSignedIn) return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var result = await Api.GetKeysAsync();
+        if (result.Success)
+        {
+            _keys = result.Data!;
+        }
+        else
+        {
+            _error = result.Error;
+        }
+    }
+
+    private async Task ToggleEnabledAsync(ConfigurationKeyDto key)
+    {
+        var result = await Api.SetKeyEnabledAsync(key.Id, !key.IsEnabled);
+        if (result.Success)
+        {
+            await LoadAsync();
+        }
+        else
+        {
+            _error = result.Error;
+        }
+    }
+
+    private async Task CreateKeyAsync()
+    {
+        var request = new CreateConfigurationKeyRequest
+        {
+            KeyName = _newKeyName,
+            DisplayName = _newDisplayName,
+            Description = _newDescription,
+            DataType = _newDataType,
+            VisibilityGroup = _newVisibilityGroup,
+            IsRequired = _newIsRequired,
+            IsSensitive = _newDataType == ConfigurationDataType.Secret
+        };
+
+        var result = await Api.CreateKeyAsync(request);
+        if (result.Success)
+        {
+            _newKeyName = _newDisplayName = _newDescription = "";
+            _newIsRequired = false;
+            await LoadAsync();
+        }
+        else
+        {
+            _error = result.Error;
+        }
+    }
+}

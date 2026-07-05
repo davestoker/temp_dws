@@ -1,0 +1,30 @@
+## .NET
+bin/
+obj/
+out/
+
+## Rider/VS
+.vs/
+.vscode/
+*.user
+*.suo
+
+## Azure Functions
+local.settings.json
+.azure/
+bin/
+obj/
+
+## Blazor / ASP.NET
+appsettings.Development.json.user
+
+## SQLite local dev database
+*.db
+*.db-shm
+*.db-wal
+src/ConfigurationManager.Api/configurationmanager.db*
+src/ConfigurationManager.Web/configurationmanager.db*
+
+## Misc
+.DS_Store
+*.log

@@ -1,0 +1,153 @@
+### ConfigurationManager.Api example requests
+### Use with the VS Code "REST Client" extension, JetBrains HTTP Client, or copy into curl/Postman.
+### Start the API first: cd src/ConfigurationManager.Api && func start
+
+@baseUrl = http://localhost:7071/api
+@adminKey = dev-admin-key
+@itSupportKey = dev-itsupport-key
+@ownerKey = dev-owner-key
+@runtimeKey = dev-runtime-key
+
+### --- Runtime API -----------------------------------------------------
+
+### Safe/UI resolve - sensitive values are masked. Any authenticated role works.
+GET {{baseUrl}}/configuration/resolve?tenantCode=acme&integrationName=EngagingNetworksSync&environmentName=Dev
+X-Api-Key: {{itSupportKey}}
+
+### Authorised runtime resolve - sensitive values are decrypted. Requires RuntimeReader or Admin.
+GET {{baseUrl}}/runtime/configuration/resolve?tenantCode=acme&integrationName=EngagingNetworksSync&environmentName=Dev
+X-Api-Key: {{runtimeKey}}
+
+### Same runtime call, but with a role that is NOT permitted -> expect 403 Forbidden.
+GET {{baseUrl}}/runtime/configuration/resolve?tenantCode=acme&integrationName=EngagingNetworksSync&environmentName=Dev
+X-Api-Key: {{itSupportKey}}
+
+### Resolve for the globalgiving tenant in Production - shows the Environment-layer override on EngagingNetworks.ApiBaseUrl.
+GET {{baseUrl}}/configuration/resolve?tenantCode=globalgiving&integrationName=EngagingNetworksSync&environmentName=Production
+X-Api-Key: {{adminKey}}
+
+### --- Reference data (read-only) ---------------------------------------
+
+### List tenants
+GET {{baseUrl}}/tenants
+X-Api-Key: {{adminKey}}
+
+### List environments
+GET {{baseUrl}}/environments
+X-Api-Key: {{adminKey}}
+
+### List integration types
+GET {{baseUrl}}/integrationtypes
+X-Api-Key: {{adminKey}}
+
+### List integrations
+GET {{baseUrl}}/integrations
+X-Api-Key: {{adminKey}}
+
+### List sections and subsections
+GET {{baseUrl}}/sections
+X-Api-Key: {{adminKey}}
+
+### --- Configuration keys (management) -----------------------------------
+
+### List all configuration keys
+GET {{baseUrl}}/configuration/keys
+X-Api-Key: {{adminKey}}
+
+### Get one configuration key by id (replace {{keyId}} with a real id from the list above)
+@keyId = 00000000-0000-0000-0000-000000000000
+GET {{baseUrl}}/configuration/keys/{{keyId}}
+X-Api-Key: {{adminKey}}
+
+### Create a new configuration key (Admin only)
+POST {{baseUrl}}/configuration/keys
+X-Api-Key: {{adminKey}}
+Content-Type: application/json
+
+{
+  "keyName": "Shopify.ApiKey",
+  "displayName": "Shopify API Key",
+  "description": "API key used to authenticate against the Shopify Admin API.",
+  "dataType": "Secret",
+  "isRequired": true,
+  "isSensitive": true,
+  "visibilityGroup": "Admin",
+  "sortOrder": 1
+}
+
+### Update configuration key metadata (Admin only)
+PUT {{baseUrl}}/configuration/keys/{{keyId}}
+X-Api-Key: {{adminKey}}
+Content-Type: application/json
+
+{
+  "displayName": "Shopify API Key (updated)",
+  "description": "Updated description.",
+  "isRequired": true,
+  "isSensitive": true,
+  "visibilityGroup": "Admin",
+  "sortOrder": 1
+}
+
+### Disable a configuration key (Admin only)
+POST {{baseUrl}}/configuration/keys/{{keyId}}/disable
+X-Api-Key: {{adminKey}}
+
+### Re-enable a configuration key (Admin only)
+POST {{baseUrl}}/configuration/keys/{{keyId}}/enable
+X-Api-Key: {{adminKey}}
+
+### --- Configuration values / overrides -----------------------------------
+
+### List all override rows for a key (replace {{keyId}})
+GET {{baseUrl}}/configuration/values?configurationKeyId={{keyId}}
+X-Api-Key: {{adminKey}}
+
+### List override rows scoped to a tenant + environment
+GET {{baseUrl}}/configuration/values?tenantCode=acme&environmentName=Dev
+X-Api-Key: {{adminKey}}
+
+### Create/update the Base value for a key (no tenantCode/environmentName)
+POST {{baseUrl}}/configuration/values
+X-Api-Key: {{adminKey}}
+Content-Type: application/json
+
+{
+  "configurationKeyId": "{{keyId}}",
+  "value": "base-value-example",
+  "isEnabled": true
+}
+
+### Create/update a Tenant + Environment override (most specific layer)
+POST {{baseUrl}}/configuration/values
+X-Api-Key: {{itSupportKey}}
+Content-Type: application/json
+
+{
+  "configurationKeyId": "{{keyId}}",
+  "tenantCode": "acme",
+  "environmentName": "UAT",
+  "value": "acme-uat-value",
+  "isEnabled": true
+}
+
+### Replace a secret value (plain "value" is encrypted server-side and never echoed back)
+POST {{baseUrl}}/configuration/values
+X-Api-Key: {{adminKey}}
+Content-Type: application/json
+
+{
+  "configurationKeyId": "{{keyId}}",
+  "tenantCode": "acme",
+  "value": "brand-new-secret-value",
+  "isEnabled": true
+}
+
+### Disable a specific override (replace {{valueId}} with a real ConfigurationValue id)
+@valueId = 00000000-0000-0000-0000-000000000000
+POST {{baseUrl}}/configuration/values/{{valueId}}/disable
+X-Api-Key: {{adminKey}}
+
+### Re-enable a specific override
+POST {{baseUrl}}/configuration/values/{{valueId}}/enable
+X-Api-Key: {{adminKey}}

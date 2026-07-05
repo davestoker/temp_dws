@@ -1,0 +1,59 @@
+@page "/login"
+@using ConfigurationManager.Core.Enums
+@using ConfigurationManager.Web.Services
+@inject CurrentSession Session
+@inject DemoApiKeyDirectory ApiKeys
+@inject NavigationManager Navigation
+
+<PageTitle>Sign In</PageTitle>
+
+<h1>Sign In</h1>
+
+<p class="text-muted">
+    Prototype authentication: pick which role you want to browse as. Production deployments
+    should replace this with Microsoft Entra ID sign-in and claims-based role mapping - see the
+    README security section.
+</p>
+
+<div class="row" style="max-width: 480px;">
+    <div class="mb-3">
+        <label class="form-label">Role</label>
+        <select class="form-select" @bind="_selectedRole">
+            @foreach (var entry in ApiKeys.All)
+            {
+                <option value="@entry.Role">@entry.Name (@entry.Role)</option>
+            }
+        </select>
+    </div>
+
+    <button class="btn btn-primary" @onclick="SignIn">Sign In</button>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger mt-3">@_error</div>
+}
+
+@code {
+    private string _selectedRole = "Admin";
+    private string? _error;
+
+    private void SignIn()
+    {
+        if (!Enum.TryParse<AppRole>(_selectedRole, out var role))
+        {
+            _error = "Unknown role selected.";
+            return;
+        }
+
+        var entry = ApiKeys.FindByRole(role);
+        if (entry is null)
+        {
+            _error = $"No API key configured for role '{role}'.";
+            return;
+        }
+
+        Session.SignIn(role, entry.Name, entry.Key);
+        Navigation.NavigateTo("/");
+    }
+}

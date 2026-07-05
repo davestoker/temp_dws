@@ -1,0 +1,105 @@
+@using ConfigurationManager.Core.Dtos
+@using ConfigurationManager.Web.Services
+@inject ConfigurationApiClient Api
+
+<div class="modal-backdrop-custom">
+    <div class="modal-box">
+        <h5>Edit @Item.DisplayName</h5>
+        <p class="text-muted small">
+            Editing creates or updates the most specific override for tenant <strong>@TenantCode</strong> and
+            environment <strong>@EnvironmentName</strong>. To change the Base or Tenant-only value, use the
+            Configuration Keys / Values admin API directly.
+        </p>
+
+        @if (Item.IsSensitive)
+        {
+            <div class="alert alert-info small">
+                This is a sensitive value. The current value is never shown. Leave the field blank to keep
+                the existing secret unchanged (e.g. when only toggling enabled/disabled).
+            </div>
+            <div class="mb-3">
+                <label class="form-label">New secret value</label>
+                <input class="form-control" type="password" @bind="_newValue" placeholder="Enter to replace the secret" />
+            </div>
+        }
+        else
+        {
+            <div class="mb-3">
+                <label class="form-label">Value</label>
+                <input class="form-control" @bind="_newValue" />
+            </div>
+        }
+
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="isEnabled" @bind="_isEnabled" />
+            <label class="form-check-label" for="isEnabled">Enabled</label>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary" disabled="@_saving" @onclick="SaveAsync">Save</button>
+            <button class="btn btn-secondary" @onclick="() => OnClose.InvokeAsync()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .modal-backdrop-custom {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+        display: flex; align-items: center; justify-content: center; z-index: 1050;
+    }
+    .modal-box {
+        background: white; color: #212529; padding: 1.5rem; border-radius: 0.5rem;
+        max-width: 500px; width: 90%;
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public ResolvedConfigurationItem Item { get; set; } = default!;
+    [Parameter] public string TenantCode { get; set; } = "";
+    [Parameter] public string EnvironmentName { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private string _newValue = "";
+    private bool _isEnabled = true;
+    private bool _saving;
+    private string? _error;
+
+    protected override void OnParametersSet()
+    {
+        _newValue = Item.IsSensitive ? "" : (Item.Value ?? "");
+        _isEnabled = Item.IsEnabled;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+
+        var request = new UpsertConfigurationValueRequest
+        {
+            ConfigurationKeyId = Item.ConfigurationKeyId,
+            TenantCode = TenantCode,
+            EnvironmentName = EnvironmentName,
+            Value = string.IsNullOrEmpty(_newValue) ? null : _newValue,
+            IsEnabled = _isEnabled
+        };
+
+        var result = await Api.UpsertValueAsync(request);
+        _saving = false;
+
+        if (result.Success)
+        {
+            await OnSaved.InvokeAsync();
+        }
+        else
+        {
+            _error = result.Error;
+        }
+    }
+}
